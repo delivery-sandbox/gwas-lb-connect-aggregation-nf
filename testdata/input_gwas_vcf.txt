@@ -1,0 +1,1 @@
+s3://lifebit-featured-datasets/pipelines/downstream-omics/sumstats-harmonisation/testdata/mini.gwas.vcf.gz

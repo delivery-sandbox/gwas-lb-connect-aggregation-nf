@@ -1,0 +1,311 @@
+---
+output: 
+  html_document:
+    code_download: false
+    toc: true                  # table of content true
+    toc_depth: 3               # upto three depths of headings (specified by #, ## and ###)
+    toc_float: true
+    number_sections: true      # if you want number sections at each table header
+    theme: united              # many options for theme, this one is my favorite.
+    highlight: tango           # specifies the syntax highlighting style
+    css: 'style.css'
+params:
+  input_table:  "results.tsv"
+  p_val_thresh: 1e-5
+  gene_gff: "refseqselect.hg38.gff3"
+  ensembl_pop: "1000GENOMES:phase_3:GBR"
+  top_n: 5
+  analyse_het: TRUE
+  analyse_beta: TRUE
+title: "`r paste0('Meta GWAS Report' , '') `"
+author: ""
+date: ""
+---
+
+<img src="logo.png" width=100 style="position:absolute;top:4px;bottom:4px;right:4px;" />
+
+```{r setup, include=FALSE} 
+knitr::opts_chunk$set(warning = FALSE, message = FALSE, echo = FALSE) 
+```
+
+```{r include = FALSE}
+suppressPackageStartupMessages({
+source("DTable.R")
+source("plot_qqplot.R")
+source("plot_gwas_manhattan.R")
+source("plot_locuszoom.R")
+source("plot_gwas_forest.R")
+library(ggplot2)
+library(dplyr)
+})
+
+p_val_thresh <- as.numeric(params$p_val_thresh)
+
+df <- read.table(params$input_table, sep="\t", header = T)
+cols <- c("MarkerName", "CHR", "BP", "P.value", "Freq1", "Direction")
+new_colnames  <- c("SNP", "CHR", "BP", "P", "MeanFreq", "Direction")
+
+if (params$analyse_het){
+    cols <- c(cols, "HetISq") 
+    new_colnames  <- c(new_colnames, "HetISq")
+}
+
+if (params$analyse_beta){
+    cols <- c(cols, "Effect", "StdErr") 
+    new_colnames  <- c(new_colnames, "Beta", "BetaSE")
+}
+
+df <- df[,cols]
+colnames(df) <- new_colnames
+
+df$MAF <- ifelse(df$MeanFreq < 0.5, df$MeanFreq, 1 - df$MeanFreq)
+
+df$NumStudies <- lapply(gsub('?', '', df$Direction, fixed = T), nchar)
+
+df$MAF_bins <- cut(df$MAF, seq(0, 0.5, 0.05), include.lowest = T)
+levels(df$MAF_bins) <- seq(0, 0.5, 0.05)[1:10] + 0.025
+df$MAF_bins <- as.numeric(as.character(df$MAF_bins))
+
+f <- 0
+```
+
+# Visualisations
+
+## METAL result QQ plot
+
+```{r}
+f <- f+1
+figure_caption <- "QQ plot"
+
+plot_qqplot(df$P, ci=0.95)
+
+htmltools::tags$figcaption( style = 'caption-side: bottom; text-align: center; font-size: 85%%; color: #71879d',
+                            htmltools::em(paste0("Figure",f,": ")),
+                            htmltools::em(figure_caption))
+```
+
+## METAL result Manhattan plot
+
+```{r}
+figure_caption <- "Manhattan plot"
+f <- f+1
+
+plot_gwas_manahttan(df, p_cutoff = p_val_thresh, sumstats_cols=c("SNP", "CHR", "BP", "P"))
+
+htmltools::tags$figcaption( style = 'caption-side: bottom; text-align: center; font-size: 85%%; color: #71879d',
+                            htmltools::em(paste0("Figure",f,": ")),
+                            htmltools::em(figure_caption))
+```
+
+## METAL forest plot
+
+```{r, fig.height=10}
+figure_caption <- "Forest plot of top 100 most significant SNPs ranked by P-value"
+f <- f+1
+
+n <- 100
+thrsh_n <- df[order(df$P),"P"][min(n+1,nrow(df))]
+forest_df <- df[df$P<thrsh_n,]
+forest_df$SNP <- factor(forest_df$SNP, levels=forest_df[order(-forest_df$P),"SNP"])
+
+plot_gwas_forest(forest_df, snp_col = "SNP", beta_col = "Beta", se_col = "BetaSE") +
+    xlab("")  + theme(aspect.ratio=10/5)
+
+htmltools::tags$figcaption( style = 'caption-side: bottom; text-align: center; font-size: 85%%; color: #71879d',
+                            htmltools::em(paste0("Figure",f,": ")),
+                            htmltools::em(figure_caption))
+```
+
+## Regional plots
+
+Neighbourhoods of top significant SNPs from METAL results:
+
+
+```{r, results='asis'}
+f <- f+1
+
+top_n <- as.numeric(params$top_n)
+
+grl_annot <- gff_to_grlannot(params$gene_gff, attr_label='gene_name')
+
+lz_df <- df
+lz_df$CHR <- paste0("chr", lz_df$CHR)
+
+peaks <- find_peaks(lz_df,
+                    exclude = lz_df$P > p_val_thresh,
+                    max_n = top_n,
+                    min_dist = 1e5,
+                    chr_col="CHR", pos_col="BP", val_col="P")
+
+peak_df <- lz_df[peaks,]
+sigf_peaks <- peak_df[peak_df$P > p_val_thresh, "SNP"]
+
+if (length(sigf_peaks > 0)) {
+    snps_to_plot <- sigf_peaks
+} else {
+    snps_to_plot <- peak_df[,"SNP"]
+}
+
+# iterate through the p_values > than threshold
+i <- 1
+for (index_snp in snps_to_plot){
+    message(index_snp)
+
+    ld_data <- get_ensembl_ld(index_snp, ensembl_pop = params$ensembl_pop)
+    ld_cols <- c("SNP", "r2")
+    subtitle <- paste("LD data:", params$ensembl_pop, "(Ensembl API)")
+
+    p <- plot_locuszoom(lz_df,
+                        ld_data,
+                        index_snp,
+                        grl_annot,
+                        subtitle = subtitle,
+                        flank = 1e5,
+                        sumstats_cols=c("SNP", "CHR", "BP", "P"),
+                        ld_cols=ld_cols)
+    print(p)
+    figure_number <- paste0("Figure",f,".",i)
+    i <- i+1
+    htmltools::tags$figcaption( style = 'caption-side: bottom; text-align: center; font-size: 85%%; color: #71879d',
+                            htmltools::em(figure_number))
+}
+```
+
+
+## METAL output QC
+```{r}
+figure_caption <- "Mean MAF cumulative frequency."
+f <- f+1
+
+ggplot(df, aes(x = MAF)) +
+    geom_histogram(aes(y=cumsum(..count..)/nrow(df)), bins = 50, fill="lightblue", color = "white", boundary = 0) +
+    stat_ecdf(geom="line", n=50, pad = F, color = 'steelblue') + 
+    xlim(c(0,0.5)) +
+    theme_bw() +
+    ylab("Frequency") + xlab("Mean MAF") +
+    ggtitle("Cumulative Frequency of Mean MAF")
+
+htmltools::tags$figcaption( style = 'caption-side: bottom; text-align: center; font-size: 85%%; color: #71879d',
+                            htmltools::em(paste0("Figure",f,": ")),
+                            htmltools::em(figure_caption))
+```
+
+```{r}
+figure_caption <- "Absolute Beta cumulative frequency."
+
+if (params$analyse_beta) {
+  f <- f+1
+  p <- ggplot(df, aes(x = abs(Beta))) +
+      geom_histogram(aes(y=cumsum(..count..)/nrow(df)), bins = 50, fill="lightblue", color = "white", boundary = 0) +
+      stat_ecdf(geom="line", pad = F, n=50, color = 'steelblue') +
+      theme_bw() +
+      ylab("Frequency") + xlab("Absolute Beta") +
+      ggtitle("Cumulative Frequency of absolute Beta")
+
+  print(p)
+  htmltools::tags$figcaption( style = 'caption-side: bottom; text-align: center; font-size: 85%%; color: #71879d',
+                            htmltools::em(paste0("Figure",f,": ")),
+                            htmltools::em(figure_caption))
+}
+```
+
+```{r}
+figure_caption <- "Mean MAF vs -log10(P)."
+f <- f+1
+
+ggplot(df, aes(x=MAF, y=-log10(P))) + 
+  geom_point(color = 'lightblue', alpha = 0.3, size = 0.5) +
+  geom_boxplot(aes(group=MAF_bins), outlier.shape = NA, width = 0.05, color="steelblue", orientation = "x", alpha = 0.1 ) +
+  ylab(expression(paste("-log"[10], plain(P)))) + xlab("Mean MAF") +
+  theme_bw()
+
+htmltools::tags$figcaption( style = 'caption-side: bottom; text-align: center; font-size: 85%%; color: #71879d',
+                            htmltools::em(paste0("Figure",f,": ")),
+                            htmltools::em(figure_caption))
+```
+
+```{r}
+figure_caption <- "Absolute Beta vs mean MAF."
+
+if (params$analyse_beta) {
+  f <- f+1
+  p <- ggplot(df, aes(x=MAF, y=abs(Beta))) + 
+    geom_point(color = 'lightblue', alpha = 0.2, size = 0.5) +
+    geom_boxplot(aes(group=MAF_bins), outlier.shape = NA, width = 0.05, color="steelblue", orientation = "x", alpha = 0.1 ) +
+    ylab("Absolute Beta") + xlab("Mean MAF") +
+    theme_bw()
+
+  print(p)
+  htmltools::tags$figcaption( style = 'caption-side: bottom; text-align: center; font-size: 85%%; color: #71879d',
+                            htmltools::em(paste0("Figure",f,": ")),
+                            htmltools::em(figure_caption))
+}
+```
+
+```{r}
+figure_caption <- "Absolute Beta vs -log10(P)."
+
+if (params$analyse_beta) {
+  f <- f+1
+  p <- ggplot(df, aes(x=abs(Beta), y=-log10(P))) + 
+    geom_point(color = 'lightblue', alpha = 0.5, size = 0.5) +
+    ylab(expression(paste("-log"[10], plain(P)))) + xlab("Absolute Beta") +
+    theme_bw()
+
+  print(p)
+  htmltools::tags$figcaption( style = 'caption-side: bottom; text-align: center; font-size: 85%%; color: #71879d',
+                            htmltools::em(paste0("Figure",f,": ")),
+                            htmltools::em(figure_caption))
+}
+```
+
+```{r}
+figure_caption <- "Mean MAF vs heterogeneity."
+
+df[df$num_studies<2,"HetISq"] <- NA
+
+if (params$analyse_het) {
+  f <- f+1
+  df[df$NumStudies<2,"HetISq"] <- NA
+  p <- ggplot(df, aes(x=MAF, y=HetISq)) + 
+    geom_point(color = 'lightblue', alpha = 0.1, size = 0.5) +
+    geom_boxplot(aes(group=MAF_bins), outlier.shape = NA, width = 0.05, color="steelblue", orientation = "x", alpha = 0.1 ) +
+    ylab(expression("Heterogeneity "(I^2))) + xlab("Mean MAF") +
+    theme_bw()
+
+  print(p)
+  htmltools::tags$figcaption( style = 'caption-side: bottom; text-align: center; font-size: 85%%; color: #71879d',
+                            htmltools::em(paste0("Figure",f,": ")),
+                            htmltools::em(figure_caption))
+}
+```
+
+
+# Tables
+
+## METAL output significant SNPs
+
+```{r}
+figure_number  <- "Table 1: "
+
+table <- read.table(params$input_table, sep="\t", header = T)
+table <- rename(table, MeanA2Freq = Freq1) %>% 
+  select(CHR, BP, everything()) %>%
+  arrange(P.value)
+table$BP <- as.character(table$BP)
+table$CHR <- as.character(table$CHR)
+sigf_table <- table[table$P.value < p_val_thresh,]
+if (nrow(sigf_table > 0)){
+  table <- sigf_table
+  figure_caption <- paste0("Significant SNPs (P<", p_val_thresh, ")")
+} else {
+  table <- table[1:50,]
+  figure_caption <- paste0("0 significant SNPs (P<", p_val_thresh, "), Showing top 50.")
+}
+
+DTable(table)
+
+htmltools::tags$figcaption( style = 'caption-side: bottom; text-align: center; font-size: 85%%; color: #71879d',
+                            htmltools::em(figure_number),
+                            htmltools::em(figure_caption))
+```
