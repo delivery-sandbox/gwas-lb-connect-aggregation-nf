@@ -1,0 +1,1 @@
+s3://lifebit-featured-datasets/pipelines/downstream-omics/sumstats-harmonisation/testdata/gwas_table_inputs/allancs-gwas_bin-bolt_lmm.tsv
