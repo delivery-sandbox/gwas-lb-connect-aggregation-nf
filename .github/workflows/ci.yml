@@ -1,0 +1,58 @@
+name: CI test
+# This workflow is triggered on pushes and PRs to the repository.
+
+on:
+  pull_request:
+    types: [review_requested, ready_for_review]
+    branches:
+      - main
+      - dev
+  workflow_dispatch:
+
+jobs:
+  docker:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        nxf_ver: ['20.01.0','']
+    steps:
+      - uses: actions/checkout@v3
+      - name: Install Nextflow
+        run: |
+          export NXF_VER=${{ matrix.nxf_ver }}
+          wget -qO- get.nextflow.io | bash
+          sudo mv nextflow /usr/local/bin/
+      - name: Test EBI (docker)
+        run: |
+          export NXF_DEFAULT_DSL=1
+          nextflow run ${GITHUB_WORKSPACE} -profile docker,test_ebi
+          tree -fh results && sudo find results work/* -maxdepth 0 -not -path 'work/stage' -exec rm -rf {} +
+      - name: Test EBI INFO filter (docker)
+        run: |
+          export NXF_DEFAULT_DSL=1
+          nextflow run ${GITHUB_WORKSPACE} -profile docker,test_ebi_info
+          tree -fh results && sudo find results work/* -maxdepth 0 -not -path 'work/stage' -exec rm -rf {} +
+      - name:  Test IEU (docker)
+        run: |
+          export NXF_DEFAULT_DSL=1
+          nextflow run ${GITHUB_WORKSPACE} -profile docker,test_ieu
+  singularity:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        singularity_version: ['3.6.4']
+        nxf_ver: ['20.01.0']
+    steps:
+      - uses: actions/checkout@v3
+      - uses: eWaterCycle/setup-singularity@v7
+        with:
+          singularity-version: ${{ matrix.singularity_version }}
+      - name: Install Nextflow
+        run: |
+          export NXF_VER=${{ matrix.nxf_ver }}
+          wget -qO- get.nextflow.io | bash
+          sudo mv nextflow /usr/local/bin/
+      - name: Test EBI (singularity) skipping filtering steps for saving disk space
+        run: |
+          nextflow run ${GITHUB_WORKSPACE} -profile test_ebi_basic,singularity
