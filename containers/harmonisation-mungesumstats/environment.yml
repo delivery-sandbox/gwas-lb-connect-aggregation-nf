@@ -1,0 +1,13 @@
+name: mungesumstats
+channels:
+    - conda-forge
+    - r
+    - bioconda
+dependencies:
+    - r-base=4.2
+    - r-stringi
+    - r-xml
+    - r-matrix
+    - r-tidyverse
+    - r-data.table
+    - r-optparse

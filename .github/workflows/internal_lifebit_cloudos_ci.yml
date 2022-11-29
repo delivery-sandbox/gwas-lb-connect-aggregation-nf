@@ -1,0 +1,208 @@
+name: Tests for internal cloudos (staging)
+# This workflow runs the pipeline with the minimal test dataset to check that it completes without any syntax errors
+on:
+  pull_request:
+    types: [review_requested, ready_for_review]
+    branches:
+      - main
+      - dev
+jobs:
+  start-runner:
+    name: Start 6 self-hosted EC2 runners
+    runs-on: ubuntu-latest
+    outputs:
+      label-1: ${{ steps.start-ec2-runner-1.outputs.label }}
+      label-2: ${{ steps.start-ec2-runner-2.outputs.label }}
+      label-3: ${{ steps.start-ec2-runner-3.outputs.label }}
+      label-4: ${{ steps.start-ec2-runner-4.outputs.label }}
+      label-5: ${{ steps.start-ec2-runner-5.outputs.label }}
+      label-6: ${{ steps.start-ec2-runner-6.outputs.label }}
+      ec2-instance-id-1: ${{ steps.start-ec2-runner-1.outputs.ec2-instance-id }}
+      ec2-instance-id-2: ${{ steps.start-ec2-runner-2.outputs.ec2-instance-id }}
+      ec2-instance-id-3: ${{ steps.start-ec2-runner-3.outputs.ec2-instance-id }}
+      ec2-instance-id-4: ${{ steps.start-ec2-runner-4.outputs.ec2-instance-id }}
+      ec2-instance-id-5: ${{ steps.start-ec2-runner-5.outputs.ec2-instance-id }}
+      ec2-instance-id-6: ${{ steps.start-ec2-runner-6.outputs.ec2-instance-id }}
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_CUSTOM_RUNNER_ACCESS_KEY }}
+          aws-secret-access-key: ${{ secrets.AWS_CUSTOM_RUNNER_ACCESS_SECRET }}
+          aws-region: ${{ secrets.AWS_CUSTOM_RUNNER_REGION }}
+      - name: Start EC2 runner 1 of 6
+        id: start-ec2-runner-1
+        uses: machulav/ec2-github-runner@v2
+        with:
+          mode: start
+          github-token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
+          ec2-image-id: ami-0b9f2feffc7342de3
+          ec2-instance-type: t3.micro
+          subnet-id: subnet-0b2e0c5a1aa4923e7
+          security-group-id: sg-0f0ee28bd838830fb
+      - name: Start EC2 runner 2 of 6
+        id: start-ec2-runner-2
+        uses: machulav/ec2-github-runner@v2
+        with:
+          mode: start
+          github-token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
+          ec2-image-id: ami-0b9f2feffc7342de3
+          ec2-instance-type: t3.micro
+          subnet-id: subnet-0b2e0c5a1aa4923e7
+          security-group-id: sg-0f0ee28bd838830fb
+      - name: Start EC2 runner 3 of 6
+        id: start-ec2-runner-3
+        uses: machulav/ec2-github-runner@v2
+        with:
+          mode: start
+          github-token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
+          ec2-image-id: ami-0b9f2feffc7342de3
+          ec2-instance-type: t3.micro
+          subnet-id: subnet-0b2e0c5a1aa4923e7
+          security-group-id: sg-0f0ee28bd838830fb
+      - name: Start EC2 runner 4 of 6
+        id: start-ec2-runner-4
+        uses: machulav/ec2-github-runner@v2
+        with:
+          mode: start
+          github-token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
+          ec2-image-id: ami-0b9f2feffc7342de3
+          ec2-instance-type: t3.micro
+          subnet-id: subnet-0b2e0c5a1aa4923e7
+          security-group-id: sg-0f0ee28bd838830fb
+      - name: Start EC2 runner 5 of 6
+        id: start-ec2-runner-5
+        uses: machulav/ec2-github-runner@v2
+        with:
+          mode: start
+          github-token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
+          ec2-image-id: ami-0b9f2feffc7342de3
+          ec2-instance-type: t3.micro
+          subnet-id: subnet-0b2e0c5a1aa4923e7
+          security-group-id: sg-0f0ee28bd838830fb
+      - name: Start EC2 runner 6 of 6
+        id: start-ec2-runner-6
+        uses: machulav/ec2-github-runner@v2
+        with:
+          mode: start
+          github-token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
+          ec2-image-id: ami-0b9f2feffc7342de3
+          ec2-instance-type: t3.micro
+          subnet-id: subnet-0b2e0c5a1aa4923e7
+          security-group-id: sg-0f0ee28bd838830fb
+
+  internal_staging:
+    needs: start-runner
+    timeout-minutes: 2000
+    strategy:
+      fail-fast: false
+      matrix:
+        # Limit combinatorics: https://docs.github.com/en/actions/using-jobs/using-a-matrix-for-your-jobs#expanding-or-adding-matrix-configurations
+        include:
+          - ci-profile: 'test_ebi'
+            ec2-runner: ${{ needs.start-runner.outputs.label-1 }}
+            ec2-type: 'm4.xlarge'
+            disk-size: 40
+          - ci-profile: 'test_ebi_dbsnp155'
+            ec2-runner: ${{ needs.start-runner.outputs.label-2 }}
+            ec2-type: 'r4.xlarge'
+            disk-size: 100
+          - ci-profile: 'test_ieu'
+            ec2-runner: ${{ needs.start-runner.outputs.label-3 }}
+            ec2-type: 'r4.xlarge'
+            disk-size: 100
+          - ci-profile: 'test_ieu_dbsnp155'
+            ec2-runner: ${{ needs.start-runner.outputs.label-4 }}
+            ec2-type: 'r4.2xlarge'
+            disk-size: 100
+          - ci-profile: 'test_gwas_vcf_basic'
+            ec2-runner: ${{ needs.start-runner.outputs.label-5 }}
+            ec2-type: 'c5.xlarge'
+            disk-size: 40
+          - ci-profile: 'test_gwas_tables_all'
+            ec2-runner: ${{ needs.start-runner.outputs.label-6 }}
+            ec2-type: 'c5.xlarge'
+            disk-size: 40
+
+    runs-on: ${{ matrix.ec2-runner }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - id: truncate-sha
+        run: echo "::set-output name=short-sha::$(echo ${{ github.event.pull_request.head.sha }} | cut -c1-7 )"
+      - name: Test for profile ${{ matrix.ci-profile }}
+        uses: lifebit-ai/action-cloudos-cli@0.2.0
+        with:
+          apikey: ${{ secrets.CLOUDOS_TOKEN }}
+          cloudos_url: 'https://staging.lifebit.ai'
+          workspace_id: ${{ secrets.CLOUDOS_WORKSPACE_ID }}
+          project_name: 'pipeline-ci-test-from-gh-action'
+          job_name: "git-commit:[${{steps.truncate-sha.outputs.short-sha}}]-pr:[${{ github.event.number }}]-triggered-from:[${{ github.event.repository.name }}]-commit-author:[${{github.event.commits[0].author.name}}]-profile:[${{ matrix.ci-profile }}]"
+          workflow_name: 'bi/lifebit-ai/gwas-sumstats-harmonisation-nf'
+          git_commit: ${{ github.event.pull_request.head.sha }}
+          wait_time: 7200 #2h
+          nextflow_profile: ${{ matrix.ci-profile }}
+          instance_type: ${{ matrix.ec2-type }}
+          instance_disk: ${{ matrix.disk-size }} #in GB
+          request_interval: 30 #every 30 seconds check if the job has finished
+          cost_limit: 2 #in USD
+          cloudos_cli_flags: '--spot --wait-completion'
+
+  stop-runner:
+    name: Stop self-hosted EC2 runner
+    needs:
+      - start-runner # required to get output from the start-runner job
+      - internal_staging # required to wait when the main job is done
+    runs-on: ubuntu-latest
+    if: ${{ always() }} # required to stop the runner even if the error happened in the previous jobs
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_CUSTOM_RUNNER_ACCESS_KEY }}
+          aws-secret-access-key: ${{ secrets.AWS_CUSTOM_RUNNER_ACCESS_SECRET }}
+          aws-region: ${{ secrets.AWS_CUSTOM_RUNNER_REGION }}
+      - name: Stop EC2 runner 1
+        uses: machulav/ec2-github-runner@v2
+        with:
+          mode: stop
+          github-token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
+          label: ${{ needs.start-runner.outputs.label-1 }}
+          ec2-instance-id: ${{ needs.start-runner.outputs.ec2-instance-id-1 }}
+      - name: Stop EC2 runner 2
+        uses: machulav/ec2-github-runner@v2
+        with:
+          mode: stop
+          github-token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
+          label: ${{ needs.start-runner.outputs.label-2 }}
+          ec2-instance-id: ${{ needs.start-runner.outputs.ec2-instance-id-2 }}
+      - name: Stop EC2 runner 3
+        uses: machulav/ec2-github-runner@v2
+        with:
+          mode: stop
+          github-token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
+          label: ${{ needs.start-runner.outputs.label-3 }}
+          ec2-instance-id: ${{ needs.start-runner.outputs.ec2-instance-id-3 }}
+      - name: Stop EC2 runner 4
+        uses: machulav/ec2-github-runner@v2
+        with:
+          mode: stop
+          github-token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
+          label: ${{ needs.start-runner.outputs.label-4 }}
+          ec2-instance-id: ${{ needs.start-runner.outputs.ec2-instance-id-4 }}
+      - name: Stop EC2 runner 5
+        uses: machulav/ec2-github-runner@v2
+        with:
+          mode: stop
+          github-token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
+          label: ${{ needs.start-runner.outputs.label-5 }}
+          ec2-instance-id: ${{ needs.start-runner.outputs.ec2-instance-id-5 }}
+      - name: Stop EC2 runner 6
+        uses: machulav/ec2-github-runner@v2
+        with:
+          mode: stop
+          github-token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
+          label: ${{ needs.start-runner.outputs.label-6 }}
+          ec2-instance-id: ${{ needs.start-runner.outputs.ec2-instance-id-6 }}
