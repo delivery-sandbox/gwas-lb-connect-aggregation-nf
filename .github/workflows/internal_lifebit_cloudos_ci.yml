@@ -149,7 +149,7 @@ jobs:
       - id: truncate-sha
         run: echo "::set-output name=short-sha::$(echo ${{ github.event.pull_request.head.sha }} | cut -c1-7 )"
       - name: Test for profile ${{ matrix.ci-profile }}
-        uses: lifebit-ai/action-cloudos-cli@0.2.0
+        uses: lifebit-ai/action-cloudos-cli@0.3.0
         with:
           apikey: ${{ secrets.CLOUDOS_TOKEN }}
           cloudos_url: 'https://staging.lifebit.ai'
