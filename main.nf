@@ -231,13 +231,13 @@ if (params.input_type == 'regenie_folder_for_lb_connect'){
 
         output:
         //file("staged_result_${uuid}") into stagged_gwas_results_dir
-        file("staged_result_${uuid}/allancs/notransform/regenie/*.regenie") into ch_gwas_tables
+        file("staged_result_${uuid}/*.regenie") into ch_gwas_tables
 
         script:
         uuid = UUID.randomUUID().toString()
         """
         mkdir staged_result_${uuid}
-        cp -r $gwas_results_dir/* staged_result_${uuid}/
+        cp -r $gwas_results_dir/allancs/notransform/regenie/*.regenie staged_result_${uuid}/
         """
     }
 }
