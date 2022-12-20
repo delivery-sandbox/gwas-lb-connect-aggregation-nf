@@ -216,6 +216,30 @@ if (params.gwas_source in ['ebi', 'ieu']) {
         .take(params.take_n_studies) //default is -1 i.e. take all files (but param is useful for testing with fewer files)
 } else if (params.gwas_source in ['gwas_table'] && params.input_type == 'single') {
     ch_gwas_tables = Channel.fromPath(params.input)
+} else if (params.gwas_source in ['gwas_table'] && params.input_type == 'regenie_folder_for_lb_connect') {
+    gwas_results_dir = params.input.split(',').collect()
+    ch_gwas_results_dir = Channel.fromPath(gwas_results_dir)
+    //ch_gwas_results_dir.view()
+    //ch_gwas_tables
+}
+
+if (params.input_type == 'regenie_folder_for_lb_connect'){
+    // not to have same name collision for "results" directory sufix
+    process stageResults {
+        input:
+        file(gwas_results_dir) from ch_gwas_results_dir
+
+        output:
+        //file("staged_result_${uuid}") into stagged_gwas_results_dir
+        file("staged_result_${uuid}/allancs/notransform/regenie/*.regenie") into ch_gwas_tables
+
+        script:
+        uuid = UUID.randomUUID().toString()
+        """
+        mkdir staged_result_${uuid}
+        cp -r $gwas_results_dir/* staged_result_${uuid}/
+        """
+    }
 }
 
 // Channel for omop vocabulary
@@ -1080,18 +1104,3 @@ if (params.convert_to_hail) {
 //   fi
 //   """
 // }
-
-// When the pipeline is not run locally
-// Ensure trace report is output in the pipeline results (in 'pipeline_info' folder)
-
-userName = workflow.userName
-
-if ( userName == "ubuntu" || userName == "ec2-user") {
-  workflow.onComplete {
-
-  def trace_timestamp = new java.util.Date().format( 'yyyy-MM-dd_HH-mm-ss')
-
-  traceReport = file("/home/${userName}/nf-out/trace.txt")
-  traceReport.copyTo("results/pipeline_info/execution_trace_${trace_timestamp}.txt")
-  }
-}
