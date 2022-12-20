@@ -232,7 +232,7 @@ if (params.input_type == 'regenie_folder_for_lb_connect'){
 	
         output:
         //file("staged_result_${uuid}") into stagged_gwas_results_dir
-        file("staged_result_${uuid}/*.regenie") into ch_gwas_tables
+        file("staged_result_*/*.regenie") into ch_gwas_tables
 
         script:
         uuid = UUID.randomUUID().toString()
