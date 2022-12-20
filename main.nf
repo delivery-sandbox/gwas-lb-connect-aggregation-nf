@@ -228,7 +228,8 @@ if (params.input_type == 'regenie_folder_for_lb_connect'){
     process stageResults {
         input:
         file(gwas_results_dir) from ch_gwas_results_dir
-
+	echo true
+	
         output:
         //file("staged_result_${uuid}") into stagged_gwas_results_dir
         file("staged_result_${uuid}/*.regenie") into ch_gwas_tables
@@ -238,6 +239,11 @@ if (params.input_type == 'regenie_folder_for_lb_connect'){
         """
         mkdir staged_result_${uuid}
         cp -r $gwas_results_dir/allancs/notransform/regenie/*.regenie staged_result_${uuid}/
+	echo "file permissions before chmod ugo+r"
+	ls -l
+	chmod ugo+r staged_result_${uuid}/*
+	echo "file permissions after chmod ugo+r"
+	ls -l 
         """
     }
 }
