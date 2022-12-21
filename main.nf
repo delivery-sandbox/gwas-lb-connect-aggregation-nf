@@ -529,9 +529,11 @@ if (params.gwas_source == 'gwas_table') {
         each file(snplocs_grch38) from ch_snplocs_grch38
 
         output:
-        set file(study_id), file("*_harmonised_sumstats.vcf") into ch_harmonised_table_vcf
+        set file(study_id), file("*_harmonised_sumstats_${uuid}.vcf") into ch_harmonised_table_vcf
 
         script:
+        // not to have same name collision for "results" directory sufix
+        uuid = UUID.randomUUID().toString()
         """
         # Generate study_id
         population=\$(grep -m1 -h "#Population" $gwas_table | awk -F "\\t" '{print \$2}')
@@ -583,7 +585,7 @@ if (params.gwas_source == 'gwas_table') {
         Rscript munge_gwastable.R \
             --gwas_table=sumstat.tmp \
             --meta_table=meta_table.tsv \
-            --outfile=\${study_identifier}_harmonised_sumstats.vcf \
+            --outfile=\${study_identifier}_harmonised_sumstats_${uuid}.vcf \
             --genome_build="\$genome_build" \
             --total_samples=\$totalsamples \
             --dbsnp=${params.dbsnp} \
@@ -591,7 +593,7 @@ if (params.gwas_source == 'gwas_table') {
             --metagwas=\$metagwas \
             --ncpus=${task.cpus} 2> \${study_identifier}.munge.log
 
-        gunzip -S .bgz \${study_identifier}_harmonised_sumstats.vcf.bgz
+        gunzip -S .bgz \${study_identifier}_harmonised_sumstats_${uuid}.vcf.bgz
         """
     }
     ch_harmonised_table_vcf.map{ [it[0].text] + [it[1]] }
@@ -611,20 +613,22 @@ if (params.standardise && params.coef_conversion) {
         each file(conv_script) from ch_conv_script
 
         output:
-        set val("${study_id}"), file("${study_id}_harmonised_conv_sumstats.vcf") into ch_conv_sumstats
+        set val("${study_id}"), file("${study_id}_harmonised_conv_sumstats_${uuid}.vcf") into ch_conv_sumstats
         
         script:
+        // not to have same name collision for "results" directory sufix
+        uuid = UUID.randomUUID().toString()
         """
         # Detect the FRQ column necessary to `--standardise`
         FRQ_COLUMN_EXISTS=\$(awk '/^[^#]/ {if(\$9 ~ /AF/) a=1; else a=0; exit}END{print a}' $sumstats)
 
         # Decide and convert
         if [ \$FRQ_COLUMN_EXISTS == "1" ]; then
-            python $conv_script -v $sumstats -o ${study_id}_harmonised_conv_sumstats.vcf --standardise --beta2or
+            python $conv_script -v $sumstats -o ${study_id}_harmonised_conv_sumstats_${uuid}.vcf --standardise --beta2or
             echo "[MSG] BETA and SE standardisation performed."
             echo "[MSG] BETA to OR conversion performed."
         else
-            python $conv_script -v $sumstats -o ${study_id}_harmonised_conv_sumstats.vcf --beta2or
+            python $conv_script -v $sumstats -o ${study_id}_harmonised_conv_sumstats_${uuid}.vcf --beta2or
             echo "[MSG] BETA to OR conversion performed."
             echo "[WARNING] BETA and SE standardisation not performed as FRQ value not present."
         fi
@@ -764,7 +768,7 @@ process make_qc_plots {
     publishDir "${params.outdir}/QC_plots", mode: 'copy'
     
     input:
-    set val(study_id), file("fully_harmonised_sumstats.vcf") from ch_full_sumstats
+    set val(study_id), file(fully_harmonised_sumstats_vcf) from ch_full_sumstats
     each file('gwas_qc_plots.py') from ch_qc_plots_script
 
     output:
@@ -775,7 +779,7 @@ process make_qc_plots {
     # Check whether the VCF contains FRQ column
     if `tail -1 fully_harmonised_sumstats.vcf | grep -q "AF"`; then
         python gwas_qc_plots.py \
-            --sumstat fully_harmonised_sumstats.vcf \
+            --sumstat $fully_harmonised_sumstats_vcf \
             --c-maf AF \
             --c-beta ES \
             --c-se SE \
@@ -799,9 +803,11 @@ if (filter_activated) {
         set val(study_id), file(sumstats) from ch_full_sumstats_2
 
         output:
-        tuple val(study_id), file("${study_id}_harmonised_filtered_sumstats.vcf") into ch_filtered_sumstats
+        tuple val(study_id), file("${study_id}_harmonised_filtered_sumstats_${uuid}.vcf") into ch_filtered_sumstats
 
         script:
+        // not to have same name collision for "results" directory sufix
+        uuid = UUID.randomUUID().toString()
         beta_smaller_filter = params.filter_beta_smaller_than || params.filter_beta_smaller_than == 0 ? "-e FORMAT/ES[*]<$params.filter_beta_smaller_than" : ""
         beta_greater_filter = params.filter_beta_greater_than || params.filter_beta_greater_than == 0 ? "-e FORMAT/ES[*]>$params.filter_beta_greater_than" : ""
         p_filter = params.filter_p_greater_than || params.filter_p_greater_than == 0 ? "-e FORMAT/LP[*]>$params.filter_p_greater_than" : ""
@@ -832,7 +838,7 @@ if (filter_activated) {
                 mv temp_sumstats_new.vcf temp_sumstats.vcf
             fi
         done
-        mv temp_sumstats.vcf "${study_id}_harmonised_filtered_sumstats.vcf"
+        mv temp_sumstats.vcf "${study_id}_harmonised_filtered_sumstats_${uuid}.vcf"
         """
     }
 } else {
@@ -853,22 +859,24 @@ process convert_vcf_metal {
     set val(study_name), file(study) from ch_filtered_sumstats_for_metagwas_metal
 
     output:
-    file("${study.baseName}.converted.csv") into all_input_studies_ch
+    file("${study.baseName}_${uuid}.converted.csv") into all_input_studies_ch
 
     script:
+    // not to have same name collision for "results" directory sufix
+    uuid = UUID.randomUUID().toString()
     """
     # Process metadata from VCF file
     grep -m1 "^##SAMPLE" $study | \
     sed -e "s/^##SAMPLE=<//" -e "s/>\$//" -e "s/\\"//g" -e "s/=/\\t/g" | \
     sed -E "s/([^ ]),([A-Z])/\\1\\n\\2/g" | \
-    while read line; do echo "##\$line"; done > "${study.baseName}.converted.csv"
+    while read line; do echo "##\$line"; done > "${study.baseName}_${uuid}.converted.csv"
 
-    echo "${params.chr_col},${params.pos_col},${params.rsid_col},${params.a1_col},${params.a2_col},${params.metal_freq_col},${params.beta_col},${params.se_col},${params.pval_col}" >> "${study.baseName}.converted.csv"
+    echo "${params.chr_col},${params.pos_col},${params.rsid_col},${params.a1_col},${params.a2_col},${params.metal_freq_col},${params.beta_col},${params.se_col},${params.pval_col}" >> "${study.baseName}_${uuid}.converted.csv"
     bcftools norm --multiallelic -any -Ou $study | \
     bcftools query -f'%CHROM,%POS,[%ID],%REF,%ALT,[%AF],[%ES],[%SE],[%LP]\n' | \
         awk 'BEGIN{FS=OFS=","} {
             print \$1,\$2,\$3,\$4,\$5,\$6,\$7,\$8,sprintf("%.10f",10^-\$9);
-        }' >> "${study.baseName}.converted.csv"
+        }' >> "${study.baseName}_${uuid}.converted.csv"
     """
 }
 
